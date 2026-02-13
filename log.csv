@@ -1,0 +1,6 @@
+﻿,timestamp,query,latency_ms,evidence_ids,confidence
+0,2026-02-13T02:58:33,Where is the nearest bus station near by student union,18,umkc-volker-campus-map.pdf::p2::c2;umkc-student-handbook.pdf::p56::c1;umkc-health-sciences-campus-map.pdf::p2::c1;umkc-volker-campus-map.pdf::p1::c2;umkc-student-handbook.pdf::p56::c2,0.48
+1,2026-02-13T03:04:41,what is the Conduct and Honor Codes at UMKC?,16,umkc-student-handbook.pdf::p14::c1;2025ccfsrumkcpolice.pdf::p21::c2;2025ccfsrumkcpolice.pdf::p12::c1;2025ccfsrumkcpolice.pdf::p9::c2;visual-identity-guidelines.pdf::p60::c1,0.69
+2,2026-02-13T03:05:23,Which Hall is close to Plater Hall?,16,2025ccfsrumkcpolice.pdf::p88::c2;2025ccfsrumkcpolice.pdf::p87::c2;umkc-volker-campus-map.pdf::p1::c2;2026-spring-shuttle-schedule.pdf::p1::c3;2026-spring-shuttle-schedule.pdf::p1::c1,0.44
+3,2026-02-13T03:06:21,Tell me the price of parking at UMKC,24,Student Permits - Parking Options - Parking _ University of Missouri-Kansas City.pdf::p4::c1;umkc-volker-campus-map.pdf::p2::c2;umkc-student-handbook.pdf::p54::c2;umkc-health-sciences-campus-map.pdf::p2::c1;visual-identity-guidelines.pdf::p57::c2,0.6
+4,2026-02-13T03:07:19,Do you know the student rules  at UMKC?,15,umkc-student-handbook.pdf::p1::c1;umkc-student-handbook.pdf::p14::c1;2025ccfsrumkcpolice.pdf::p21::c2;umkc-student-handbook.pdf::p55::c2;umkc-student-handbook.pdf::p42::c1,0.66
