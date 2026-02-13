@@ -1,3 +1,15 @@
+import sys
+from pathlib import Path
+
+# ✅ Ensure repo root is on PYTHONPATH so "src" can be imported
+ROOT = Path(__file__).resolve().parents[1]   # points to repo root (week4/)
+sys.path.insert(0, str(ROOT))
+
+import streamlit as st
+import pandas as pd
+
+from src.rag_core import Week3RAG, rag_query_logged
+
 
 import streamlit as st
 import pandas as pd
