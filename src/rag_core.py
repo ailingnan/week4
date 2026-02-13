@@ -1,4 +1,3 @@
-
 import re, time, csv
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,12 +5,15 @@ from typing import List, Dict, Any, Tuple
 
 import numpy as np
 import fitz  # pymupdf
-import faiss
 from sentence_transformers import SentenceTransformer
 
-# -------------------------
-# Data structures
-# -------------------------
+# ✅ FAISS is optional (Streamlit Cloud often can't install it)
+try:
+    import faiss  # type: ignore
+    HAS_FAISS = True
+except Exception as e:
+    HAS_FAISS = False
+
 @dataclass
 class SubChunk:
     chunk_id: str
@@ -24,9 +26,6 @@ class RetrievalResult:
     score: float
     chunk: SubChunk
 
-# -------------------------
-# PDF -> text
-# -------------------------
 def extract_pdf_pages(pdf_path: str) -> List[Tuple[int, str]]:
     pages = []
     with fitz.open(pdf_path) as doc:
@@ -49,23 +48,19 @@ def fixed_size_chunk(text: str, words_per_chunk: int = 250, overlap: int = 40) -
         start = max(0, end - overlap)
     return out
 
-# -------------------------
-# Core RAG Engine
-# -------------------------
 class Week3RAG:
     def __init__(self, docs_dir: str, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.docs_dir = Path(docs_dir)
         self.embedder = SentenceTransformer(model_name)
         self.sub_chunks: List[SubChunk] = []
-        self.vecs: np.ndarray = None
-        self.index = None
+        self.vecs: np.ndarray | None = None
+        self.index = None  # faiss index if available
 
     def build(self):
         pdfs = sorted(self.docs_dir.rglob("*.pdf"))
         if not pdfs:
             raise FileNotFoundError(f"No PDFs found under: {self.docs_dir}")
 
-        # 1) Extract + chunk
         subs: List[SubChunk] = []
         for pdf_path in pdfs:
             doc_id = pdf_path.name
@@ -79,48 +74,59 @@ class Week3RAG:
                     ))
         self.sub_chunks = subs
 
-        # 2) Embed
         texts = [c.text for c in self.sub_chunks]
         vecs = self.embedder.encode(
             texts,
             batch_size=32,
-            show_progress_bar=True,
+            show_progress_bar=False,
             convert_to_numpy=True,
             normalize_embeddings=True
         ).astype(np.float32)
         self.vecs = vecs
 
-        # 3) FAISS (IP for normalized embeddings)
-        dim = vecs.shape[1]
-        index = faiss.IndexFlatIP(dim)
-        index.add(vecs)
-        self.index = index
+        # ✅ Build FAISS index only if available
+        if HAS_FAISS:
+            dim = vecs.shape[1]
+            index = faiss.IndexFlatIP(dim)
+            index.add(vecs)
+            self.index = index
+        else:
+            self.index = None
 
     def retrieve(self, query: str, top_k: int = 5) -> List[RetrievalResult]:
-        qv = self.embedder.encode([query], normalize_embeddings=True, convert_to_numpy=True).astype(np.float32)
-        scores, idxs = self.index.search(qv, top_k)
+        if self.vecs is None or len(self.sub_chunks) == 0:
+            return []
 
-        # critical fix: if all scores ~ 0 -> return empty evidence
+        qv = self.embedder.encode([query], normalize_embeddings=True, convert_to_numpy=True).astype(np.float32)
+
+        if HAS_FAISS and self.index is not None:
+            scores, idxs = self.index.search(qv, top_k)
+            scores = scores[0]
+            idxs = idxs[0]
+        else:
+            # ✅ numpy cosine (since embeddings are normalized, dot = cosine)
+            sims = (self.vecs @ qv[0]).astype(np.float32)
+            idxs = np.argsort(-sims)[:top_k]
+            scores = sims[idxs]
+
+        # critical fix: if all scores ~0 -> no evidence
         if float(np.max(scores)) <= 1e-8:
             return []
 
         out = []
-        for s, i in zip(scores[0], idxs[0]):
-            if int(i) >= 0 and float(s) > 0:
+        for s, i in zip(scores, idxs):
+            if float(s) > 0:
                 out.append(RetrievalResult(score=float(s), chunk=self.sub_chunks[int(i)]))
         return out
 
     def build_evidence(self, results: List[RetrievalResult]) -> List[Dict[str, Any]]:
-        ev = []
-        for r in results:
-            ev.append({
-                "evidence_id": r.chunk.chunk_id,
-                "source": r.chunk.doc_id,
-                "page": r.chunk.page_num,
-                "score": r.score,
-                "text": r.chunk.text
-            })
-        return ev
+        return [{
+            "evidence_id": r.chunk.chunk_id,
+            "source": r.chunk.doc_id,
+            "page": r.chunk.page_num,
+            "score": r.score,
+            "text": r.chunk.text
+        } for r in results]
 
     def generate_answer_fallback(self, query: str, evidence: List[Dict[str, Any]]) -> Tuple[str, float]:
         if not evidence:
@@ -144,9 +150,7 @@ class Week3RAG:
             "evidence_ids": [e["evidence_id"] for e in evidence],
         }
 
-# -------------------------
-# Logging (Week4 requirement)
-# -------------------------
+# Logging (required)
 LOG_PATH = Path("logs/product_metrics.csv")
 LOG_PATH.parent.mkdir(exist_ok=True, parents=True)
 
@@ -157,13 +161,7 @@ def log_interaction(query: str, latency_ms: float, evidence_ids: List[str], conf
         if not file_exists:
             w.writerow(["timestamp","query","latency_ms","evidence_ids","confidence"])
         from datetime import datetime
-        w.writerow([
-            datetime.now().isoformat(timespec="seconds"),
-            query,
-            f"{latency_ms:.0f}",
-            ";".join(evidence_ids),
-            f"{confidence:.2f}"
-        ])
+        w.writerow([datetime.now().isoformat(timespec="seconds"), query, f"{latency_ms:.0f}", ";".join(evidence_ids), f"{confidence:.2f}"])
 
 def rag_query_logged(rag: Week3RAG, query: str, top_k: int = 5) -> Dict[str, Any]:
     resp = rag.query(query, top_k=top_k)
